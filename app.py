@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+import sqlite3
+import bcrypt
 
 
 app = Flask(__name__)
@@ -119,3 +121,31 @@ def eliminar_usuario(id):
     db.session.delete(usuario)
     db.session.commit()
     return jsonify({'mensaje': 'Usuario eliminado'}), 200
+
+
+
+def get_user_by_email(correo):
+    return Usuario.query.filter_by(email=correo).first()
+
+# Endpoint de login
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.get_json()
+
+    correo = data.get("email")
+    password = data.get("password")
+
+    if not correo or not password:
+        return jsonify({"error": "Correo y contraseña son obligatorios"}), 400
+
+    user = get_user_by_email(correo)
+
+    if user and check_password_hash(user.password, password):
+        return jsonify({
+            "id": user.id,
+            "nombre": user.nombre,
+            "email": user.email,
+            "mensaje": "Login exitoso"
+        }), 200
+    else:
+        return jsonify({"error": "Credenciales incorrectas"}), 401
