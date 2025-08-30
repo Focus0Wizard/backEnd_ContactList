@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-import bcrypt
 
 
 app = Flask(__name__)
@@ -246,4 +245,63 @@ def agregar_contacto(usuario_id):
     }), 201
 
 
+# EDITAR CONTACTO
+@app.route("/contactos/<int:contacto_id>", methods=["PATCH"])
+def editar_contacto(contacto_id):
+    data = request.get_json()
 
+    # VERIFICAR QUE EXISTA EL CONTACTO
+    contacto = Contacto.query.get(contacto_id)
+    if not contacto:
+        return jsonify({"error": "Contacto no encontrado"}), 404
+
+    # ACTUALIZA SOLO LOS CAMPOS PROPORCIONADOS
+    contacto.nombre = data.get("nombre", contacto.nombre)
+    contacto.telefono = data.get("telefono", contacto.telefono)
+    contacto.email = data.get("email", contacto.email)
+    
+    # VERIFICAR Y ACTUALIZAR CATEGORÍA SI SE PROPORCIONA
+    if "categoria_id" in data:
+        categoria_id = data["categoria_id"]
+        if categoria_id:
+            categoria = Categoria.query.get(categoria_id)
+            if not categoria:
+                return jsonify({"error": "Categoría no encontrada"}), 404
+            contacto.categoria_id = categoria_id
+        else:
+            contacto.categoria_id = None
+
+    db.session.commit()
+
+    return jsonify({
+        "mensaje": "Contacto actualizado exitosamente",
+        "contacto": {
+            "id": contacto.id,
+            "nombre": contacto.nombre,
+            "telefono": contacto.telefono,
+            "email": contacto.email,
+            "categoria_id": contacto.categoria_id,
+            "usuario_id": contacto.usuario_id
+        }
+    }), 200
+
+#  VER CONTACTOS DE UN USUARIO
+@app.route("/usuarios/<int:usuario_id>/contactos", methods=["GET"])
+def ver_contactos(usuario_id):
+    # VERIFICAR QUE EXISTA EL USUARIO
+    usuario = Usuario.query.get(usuario_id)
+    if not usuario:
+        return jsonify({"error": "Usuario no encontrado"}), 404
+
+    contactos = Contacto.query.filter_by(usuario_id=usuario_id).all()
+    resultado = []
+    for c in contactos:
+        resultado.append({
+            "id": c.id,
+            "nombre": c.nombre,
+            "telefono": c.telefono,
+            "email": c.email,
+            "categoria_id": c.categoria_id
+        })
+
+    return jsonify(resultado), 200
