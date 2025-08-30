@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+import bcrypt
 
 
 app = Flask(__name__)
@@ -119,3 +120,130 @@ def eliminar_usuario(id):
     db.session.delete(usuario)
     db.session.commit()
     return jsonify({'mensaje': 'Usuario eliminado'}), 200
+
+
+# -------------------
+# Crear categoria
+# -------------------
+@app.route('/categorias', methods=['POST'])
+def crear_categoria():
+    data = request.get_json()
+    if not data or not all(k in data for k in ('nombre', 'descripcion')):
+        return jsonify({'error': 'Faltan datos obligatorios'}), 400
+    
+    nueva_categoria = Categoria(
+        nombre=data['nombre'],
+        descripcion=data['descripcion'],
+    )
+    db.session.add(nueva_categoria)
+    db.session.commit()
+    return jsonify({'mensaje': 'Categoria creada', 'id': nueva_categoria.id}), 201
+
+# -------------------
+# Obtener todas las categorias
+# -------------------
+@app.route('/categorias', methods=['GET'])
+def listar_categorias():
+    categorias = Categoria.query.all()
+    resultado = []
+    for c in categorias:
+        resultado.append({
+            'id': c.id,
+            'nombre': c.nombre,
+            'descripcion': c.descripcion
+})
+    return jsonify(resultado), 200
+
+# -------------------
+# Obtener una categoria por id
+# -------------------
+@app.route('/categorias/<int:id>', methods=['GET'])
+def obtener_categoria(id):
+    categoria = Categoria.query.get_or_404(id)
+    return jsonify({
+        'id': categoria.id,
+        'nombre': categoria.nombre,
+        'descripcion': categoria.descripcion
+    }), 200
+
+# -------------------
+# Eliminar categoria
+# -------------------
+@app.route('/categorias/<int:id>', methods=['DELETE'])
+def eliminar_categoria(id):
+    categoria = Categoria.query.get_or_404(id)
+    db.session.delete(categoria)
+    db.session.commit()
+    return jsonify({'mensaje': 'Categoria eliminada'}), 200
+
+
+
+# Endpoint de login
+def get_user_by_email(correo):
+    return Usuario.query.filter_by(email=correo).first()
+
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.get_json()
+
+    correo = data.get("email")
+    password = data.get("password")
+
+    if not correo or not password:
+        return jsonify({"error": "Correo y contraseña son obligatorios"}), 400
+
+    user = get_user_by_email(correo)
+
+    if user and check_password_hash(user.password, password):
+        return jsonify({
+            "id": user.id,
+            "mensaje": "Login exitoso"
+        }), 200
+    else:
+        return jsonify({"error": "Credenciales incorrectas"}), 401
+    
+
+
+# Crear contacto
+@app.route("/usuarios/<int:usuario_id>/contactos", methods=["POST"])
+def agregar_contacto(usuario_id):
+    data = request.get_json()
+
+    # Verificar que exista el usuario
+    usuario = Usuario.query.get(usuario_id)
+    if not usuario:
+        return jsonify({"error": "Usuario no encontrado"}), 404
+
+    # Verificar que exista la categoría
+    categoria_id = data.get("categoria_id")
+    if categoria_id:
+        categoria = Categoria.query.get(categoria_id)
+        if not categoria:
+            return jsonify({"error": "Categoría no encontrada"}), 404
+
+    # Crear contacto
+    nuevo_contacto = Contacto(
+        nombre=data.get("nombre"),
+        telefono=data.get("telefono"),
+        email=data.get("email"),
+        usuario_id=usuario_id,
+        categoria_id=categoria_id
+    )
+
+    db.session.add(nuevo_contacto)
+    db.session.commit()
+
+    return jsonify({
+        "mensaje": "Contacto agregado exitosamente",
+        "contacto": {
+            "id": nuevo_contacto.id,
+            "nombre": nuevo_contacto.nombre,
+            "telefono": nuevo_contacto.telefono,
+            "email": nuevo_contacto.email,
+            "categoria_id": nuevo_contacto.categoria_id,
+            "usuario_id": nuevo_contacto.usuario_id
+        }
+    }), 201
+
+
+
