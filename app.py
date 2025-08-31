@@ -1,7 +1,11 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, send_file
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+from io import StringIO, BytesIO
+import csv
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 
 app = Flask(__name__)
@@ -28,7 +32,6 @@ class Categoria(db.Model):
     nombre = db.Column(db.String(100), nullable=False)
     descripcion = db.Column(db.String(200))
     
-    contactos = db.relationship('Contacto', backref='categoria', lazy=True)
 
 # Tabla Contacto
 class Contacto(db.Model):
@@ -40,7 +43,6 @@ class Contacto(db.Model):
     creado_en = db.Column(db.DateTime, default=datetime.utcnow)
 
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
-    categoria_id = db.Column(db.Integer, db.ForeignKey('categorias.id'), nullable=True)
 
 # -------------------
 # Crear un usuario
@@ -213,20 +215,13 @@ def agregar_contacto(usuario_id):
     if not usuario:
         return jsonify({"error": "Usuario no encontrado"}), 404
 
-    # Verificar que exista la categoría
-    categoria_id = data.get("categoria_id")
-    if categoria_id:
-        categoria = Categoria.query.get(categoria_id)
-        if not categoria:
-            return jsonify({"error": "Categoría no encontrada"}), 404
 
     # Crear contacto
     nuevo_contacto = Contacto(
         nombre=data.get("nombre"),
         telefono=data.get("telefono"),
         email=data.get("email"),
-        usuario_id=usuario_id,
-        categoria_id=categoria_id
+        usuario_id=usuario_id
     )
 
     db.session.add(nuevo_contacto)
@@ -239,7 +234,6 @@ def agregar_contacto(usuario_id):
             "nombre": nuevo_contacto.nombre,
             "telefono": nuevo_contacto.telefono,
             "email": nuevo_contacto.email,
-            "categoria_id": nuevo_contacto.categoria_id,
             "usuario_id": nuevo_contacto.usuario_id
         }
     }), 201
@@ -260,16 +254,6 @@ def editar_contacto(contacto_id):
     contacto.telefono = data.get("telefono", contacto.telefono)
     contacto.email = data.get("email", contacto.email)
     
-    # VERIFICAR Y ACTUALIZAR CATEGORÍA SI SE PROPORCIONA
-    if "categoria_id" in data:
-        categoria_id = data["categoria_id"]
-        if categoria_id:
-            categoria = Categoria.query.get(categoria_id)
-            if not categoria:
-                return jsonify({"error": "Categoría no encontrada"}), 404
-            contacto.categoria_id = categoria_id
-        else:
-            contacto.categoria_id = None
 
     db.session.commit()
 
@@ -280,7 +264,6 @@ def editar_contacto(contacto_id):
             "nombre": contacto.nombre,
             "telefono": contacto.telefono,
             "email": contacto.email,
-            "categoria_id": contacto.categoria_id,
             "usuario_id": contacto.usuario_id
         }
     }), 200
@@ -300,8 +283,10 @@ def ver_contactos(usuario_id):
             "id": c.id,
             "nombre": c.nombre,
             "telefono": c.telefono,
-            "email": c.email,
-            "categoria_id": c.categoria_id
+            "email": c.email
         })
 
     return jsonify(resultado), 200
+
+
+
