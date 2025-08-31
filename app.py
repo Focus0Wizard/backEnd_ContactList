@@ -119,3 +119,21 @@ def eliminar_usuario(id):
     db.session.delete(usuario)
     db.session.commit()
     return jsonify({'mensaje': 'Usuario eliminado'}), 200
+
+
+# -------------------
+# Eliminar contacto
+# -------------------
+@app.route('/contactos/<int:id>', methods=['DELETE'])
+def eliminar_contacto(id):
+    data = request.get_json() 
+    
+    if not data or 'confirmar' not in data or not data['confirmar']:
+        return jsonify({'error': 'Se requiere confirmación para eliminar el contacto'}), 400
+    
+    contacto = Contacto.query.get_or_404(id)
+    db.session.delete(contacto)
+    db.session.commit()
+    
+    return jsonify({'mensaje': 'Contacto eliminado correctamente'}), 200
+
