@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, Response, send_file
+from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -9,6 +10,7 @@ from reportlab.pdfgen import canvas
 
 
 app = Flask(__name__)
+CORS(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://agenda_user:agenda_pass@localhost/agenda_db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
