@@ -289,4 +289,67 @@ def ver_contactos(usuario_id):
     return jsonify(resultado), 200
 
 
-
+#Exportacion de contactos en un CSV o en un PDF
+@app.route('/usuarios/<int:usuario_id>/contactos/export', methods=['GET'])
+def exportar_contactos(usuario_id):
+    formato = request.args.get('formato', 'csv')  # por defecto CSV
+    
+    # Obtener los contactos del usuario
+    contactos = Contacto.query.filter_by(usuario_id=usuario_id).all()
+    
+    if not contactos:
+        return jsonify({"El usuario no tiene contactos"}), 404
+    
+    if formato == 'csv':
+        # Generar CSV
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['Contactos del usuario'])
+        writer.writerow(['Nombre', 'Telefono', 'Correo'])
+        
+        for c in contactos:
+            writer.writerow([c.nombre, c.telefono, c.email])
+        
+        output.seek(0)
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={"Content-Disposition": f"attachment;filename=contactos_{usuario_id}.csv"}
+        )
+    
+    elif formato == 'pdf':
+        # Generar PDF
+        buffer = BytesIO()
+        p = canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
+        
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(200, height - 50, f"Contactos del Usuario")
+        
+        y = height - 100
+        p.setFont("Helvetica", 10)
+        p.drawString(50, y, "Nombre")
+        p.drawString(200, y, "Teléfono")
+        p.drawString(350, y, "Correo")
+        
+        y -= 20
+        for c in contactos:
+            p.drawString(50, y, c.nombre)
+            p.drawString(200, y, c.telefono)
+            p.drawString(350, y, c.email)
+            y -= 20
+            if y < 50:  # salto de página
+                p.showPage()
+                y = height - 50
+        
+        p.save()
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"contactos_{usuario_id}.pdf",
+            mimetype='application/pdf'
+        )
+    
+    else:
+        return jsonify({"error": "Formato no soportado. Use csv o pdf"}), 400
