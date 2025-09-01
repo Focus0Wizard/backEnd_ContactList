@@ -1,10 +1,16 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, send_file
+from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+from io import StringIO, BytesIO
+import csv
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 
 app = Flask(__name__)
+CORS(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://agenda_user:agenda_pass@localhost/agenda_db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -28,7 +34,6 @@ class Categoria(db.Model):
     nombre = db.Column(db.String(100), nullable=False)
     descripcion = db.Column(db.String(200))
     
-    contactos = db.relationship('Contacto', backref='categoria', lazy=True)
 
 # Tabla Contacto
 class Contacto(db.Model):
@@ -40,7 +45,6 @@ class Contacto(db.Model):
     creado_en = db.Column(db.DateTime, default=datetime.utcnow)
 
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
-    categoria_id = db.Column(db.Integer, db.ForeignKey('categorias.id'), nullable=True)
 
 # -------------------
 # Crear un usuario
@@ -213,20 +217,13 @@ def agregar_contacto(usuario_id):
     if not usuario:
         return jsonify({"error": "Usuario no encontrado"}), 404
 
-    # Verificar que exista la categoría
-    categoria_id = data.get("categoria_id")
-    if categoria_id:
-        categoria = Categoria.query.get(categoria_id)
-        if not categoria:
-            return jsonify({"error": "Categoría no encontrada"}), 404
 
     # Crear contacto
     nuevo_contacto = Contacto(
         nombre=data.get("nombre"),
         telefono=data.get("telefono"),
         email=data.get("email"),
-        usuario_id=usuario_id,
-        categoria_id=categoria_id
+        usuario_id=usuario_id
     )
 
     db.session.add(nuevo_contacto)
@@ -239,7 +236,6 @@ def agregar_contacto(usuario_id):
             "nombre": nuevo_contacto.nombre,
             "telefono": nuevo_contacto.telefono,
             "email": nuevo_contacto.email,
-            "categoria_id": nuevo_contacto.categoria_id,
             "usuario_id": nuevo_contacto.usuario_id
         }
     }), 201
@@ -260,16 +256,6 @@ def editar_contacto(contacto_id):
     contacto.telefono = data.get("telefono", contacto.telefono)
     contacto.email = data.get("email", contacto.email)
     
-    # VERIFICAR Y ACTUALIZAR CATEGORÍA SI SE PROPORCIONA
-    if "categoria_id" in data:
-        categoria_id = data["categoria_id"]
-        if categoria_id:
-            categoria = Categoria.query.get(categoria_id)
-            if not categoria:
-                return jsonify({"error": "Categoría no encontrada"}), 404
-            contacto.categoria_id = categoria_id
-        else:
-            contacto.categoria_id = None
 
     db.session.commit()
 
@@ -280,7 +266,6 @@ def editar_contacto(contacto_id):
             "nombre": contacto.nombre,
             "telefono": contacto.telefono,
             "email": contacto.email,
-            "categoria_id": contacto.categoria_id,
             "usuario_id": contacto.usuario_id
         }
     }), 200
@@ -300,8 +285,73 @@ def ver_contactos(usuario_id):
             "id": c.id,
             "nombre": c.nombre,
             "telefono": c.telefono,
-            "email": c.email,
-            "categoria_id": c.categoria_id
+            "email": c.email
         })
 
     return jsonify(resultado), 200
+
+
+#Exportacion de contactos en un CSV o en un PDF
+@app.route('/usuarios/<int:usuario_id>/contactos/export', methods=['GET'])
+def exportar_contactos(usuario_id):
+    formato = request.args.get('formato', 'csv')  # por defecto CSV
+    
+    # Obtener los contactos del usuario
+    contactos = Contacto.query.filter_by(usuario_id=usuario_id).all()
+    
+    if not contactos:
+        return jsonify({"El usuario no tiene contactos"}), 404
+    
+    if formato == 'csv':
+        # Generar CSV
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['Contactos del usuario'])
+        writer.writerow(['Nombre', 'Telefono', 'Correo'])
+        
+        for c in contactos:
+            writer.writerow([c.nombre, c.telefono, c.email])
+        
+        output.seek(0)
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={"Content-Disposition": f"attachment;filename=contactos_{usuario_id}.csv"}
+        )
+    
+    elif formato == 'pdf':
+        # Generar PDF
+        buffer = BytesIO()
+        p = canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
+        
+        p.setFont("Helvetica-Bold", 14)
+        p.drawString(200, height - 50, f"Contactos del Usuario")
+        
+        y = height - 100
+        p.setFont("Helvetica", 10)
+        p.drawString(50, y, "Nombre")
+        p.drawString(200, y, "Teléfono")
+        p.drawString(350, y, "Correo")
+        
+        y -= 20
+        for c in contactos:
+            p.drawString(50, y, c.nombre)
+            p.drawString(200, y, c.telefono)
+            p.drawString(350, y, c.email)
+            y -= 20
+            if y < 50:  # salto de página
+                p.showPage()
+                y = height - 50
+        
+        p.save()
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"contactos_{usuario_id}.pdf",
+            mimetype='application/pdf'
+        )
+    
+    else:
+        return jsonify({"error": "Formato no soportado. Use csv o pdf"}), 400
