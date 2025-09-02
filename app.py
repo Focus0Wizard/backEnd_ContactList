@@ -20,8 +20,9 @@ db = SQLAlchemy(app)
 class Usuario(db.Model):
     __tablename__ = 'usuarios'
     id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
+    name = db.Column(db.String(100), nullable=False)        
+    last_name = db.Column(db.String(100), nullable=False)   
+    email = db.Column(db.String(120), unique=True, nullable=True)
     password = db.Column(db.String(200), nullable=False)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -39,7 +40,8 @@ class Categoria(db.Model):
 class Contacto(db.Model):
     __tablename__ = 'contactos'
     id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(100), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    last_name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), nullable=False)
     telefono = db.Column(db.String(20), nullable=False)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow)
@@ -52,14 +54,14 @@ class Contacto(db.Model):
 @app.route('/usuarios', methods=['POST'])
 def crear_usuario():
     data = request.get_json()
-    if not data or not all(k in data for k in ('nombre', 'email', 'password')):
+    if not data or not all(k in data for k in ('name', 'last_name', 'email', 'password')):
         return jsonify({'error': 'Faltan datos obligatorios'}), 400
     
-    # Encriptar password
     hashed_pw = generate_password_hash(data['password'], method='pbkdf2:sha256')
     
     nuevo_usuario = Usuario(
-        nombre=data['nombre'],
+        name=data['name'],
+        last_name=data['last_name'],
         email=data['email'],
         password=hashed_pw
     )
@@ -77,7 +79,8 @@ def listar_usuarios():
     for u in usuarios:
         resultado.append({
             'id': u.id,
-            'nombre': u.nombre,
+            'name': u.name,
+            'last_name': u.last_name,
             'email': u.email,
             'creado_en': u.creado_en
         })
@@ -91,7 +94,8 @@ def obtener_usuario(id):
     usuario = Usuario.query.get_or_404(id)
     return jsonify({
         'id': usuario.id,
-        'nombre': usuario.nombre,
+        'name': usuario.name,
+        'last_name': usuario.last_name,
         'email': usuario.email,
         'creado_en': usuario.creado_en
     }), 200
@@ -104,8 +108,10 @@ def actualizar_usuario(id):
     usuario = Usuario.query.get_or_404(id)
     data = request.get_json()
     
-    if 'nombre' in data:
-        usuario.nombre = data['nombre']
+    if 'name' in data:
+        usuario.name = data['name']
+    if 'last_name' in data:
+        usuario.last_name = data['last_name']
     if 'email' in data:
         usuario.email = data['email']
     if 'password' in data:
@@ -219,7 +225,8 @@ def agregar_contacto(usuario_id):
 
     # Crear contacto
     nuevo_contacto = Contacto(
-        nombre=data.get("nombre"),
+        name=data.get("name"),
+        last_name=data.get("last_name"),
         telefono=data.get("telefono"),
         email=data.get("email"),
         usuario_id=usuario_id
@@ -232,7 +239,8 @@ def agregar_contacto(usuario_id):
         "mensaje": "Contacto agregado exitosamente",
         "contacto": {
             "id": nuevo_contacto.id,
-            "nombre": nuevo_contacto.nombre,
+            "nombre": nuevo_contacto.name,
+            "apellido": nuevo_contacto.last_name,
             "telefono": nuevo_contacto.telefono,
             "email": nuevo_contacto.email,
             "usuario_id": nuevo_contacto.usuario_id
@@ -251,7 +259,8 @@ def editar_contacto(contacto_id):
         return jsonify({"error": "Contacto no encontrado"}), 404
 
     # ACTUALIZA SOLO LOS CAMPOS PROPORCIONADOS
-    contacto.nombre = data.get("nombre", contacto.nombre)
+    contacto.name = data.get("name", contacto.name)
+    contacto.last_name = data.get("last_name", contacto.last_name)
     contacto.telefono = data.get("telefono", contacto.telefono)
     contacto.email = data.get("email", contacto.email)
     
@@ -262,7 +271,8 @@ def editar_contacto(contacto_id):
         "mensaje": "Contacto actualizado exitosamente",
         "contacto": {
             "id": contacto.id,
-            "nombre": contacto.nombre,
+            "nombre": contacto.name,
+            "apellido": contacto.last_name,
             "telefono": contacto.telefono,
             "email": contacto.email,
             "usuario_id": contacto.usuario_id
@@ -282,9 +292,57 @@ def ver_contactos(usuario_id):
     for c in contactos:
         resultado.append({
             "id": c.id,
-            "nombre": c.nombre,
+            "nombre": c.name,
+            "apellido": c.last_name,
             "telefono": c.telefono,
             "email": c.email
+        })
+
+    return jsonify(resultado), 200
+
+# -------------------
+# Eliminar contacto
+# -------------------
+@app.route('/contactos/<int:id>', methods=['DELETE'])
+def eliminar_contacto(id):
+    data = request.get_json() 
+    
+    if not data or 'confirmar' not in data or not data['confirmar']:
+        return jsonify({'error': 'Se requiere confirmación para eliminar el contacto'}), 400
+    
+    contacto = Contacto.query.get_or_404(id)
+    db.session.delete(contacto)
+    db.session.commit()
+    
+    return jsonify({'mensaje': 'Contacto eliminado correctamente'}), 200
+
+
+
+# -------------------
+# Buscar contacto por nombre
+# -------------------
+@app.route('/usuarios/<int:usuario_id>/contactos/buscar', methods=['GET'])
+def buscar_contactos(usuario_id):
+    nombre = request.args.get('nombre')
+    if not nombre:
+        return jsonify({'error': 'Debes proporcionar un nombre para buscar'}), 400
+
+    contactos = Contacto.query.filter(
+        Contacto.usuario_id == usuario_id,
+        Contacto.name.ilike(f"%{nombre}%") 
+    ).all()
+
+    if not contactos:
+        return jsonify({'mensaje': 'No se encontraron contactos con ese nombre'}), 404
+
+    resultado = []
+    for c in contactos:
+        resultado.append({
+            'id': c.id,
+            'nombre': c.name,
+            'apellido': c.last_name,
+            'telefono': c.telefono,
+            'email': c.email
         })
 
     return jsonify(resultado), 200
@@ -306,11 +364,11 @@ def exportar_contactos(usuario_id):
         output = StringIO()
         writer = csv.writer(output)
         writer.writerow(['Contactos del usuario'])
-        writer.writerow(['Nombre', 'Telefono', 'Correo'])
+        writer.writerow(['Nombre', 'Apellido', 'Telefono', 'Correo'])
         
         for c in contactos:
-            writer.writerow([c.nombre, c.telefono, c.email])
-        
+            writer.writerow([c.name, c.last_name, c.telefono, c.email])
+
         output.seek(0)
         return Response(
             output.getvalue(),
@@ -330,16 +388,21 @@ def exportar_contactos(usuario_id):
         y = height - 100
         p.setFont("Helvetica", 10)
         p.drawString(50, y, "Nombre")
-        p.drawString(200, y, "Teléfono")
+        p.drawString(150, y, "Apellido")
+        p.drawString(250, y, "Teléfono")
         p.drawString(350, y, "Correo")
         
         y -= 20
         for c in contactos:
-            p.drawString(50, y, c.nombre)
-            p.drawString(200, y, c.telefono)
-            p.drawString(350, y, c.email)
+            p.drawString(50, y, c.name)
+            p.drawString(150, y, c.last_name)
+            p.drawString(250, y, c.telefono)
+            if (c.email == None):
+                p.drawString(350, y, "No disponible")
+            else:
+                p.drawString(350, y, c.email)
             y -= 20
-            if y < 50:  # salto de página
+            if y < 50:  
                 p.showPage()
                 y = height - 50
         
@@ -357,17 +420,3 @@ def exportar_contactos(usuario_id):
 
     
     
-# Eliminar contacto
-# -------------------
-@app.route('/contactos/<int:id>', methods=['DELETE'])
-def eliminar_contacto(id):
-    data = request.get_json() 
-    
-    if not data or 'confirmar' not in data or not data['confirmar']:
-        return jsonify({'error': 'Se requiere confirmación para eliminar el contacto'}), 400
-    
-    contacto = Contacto.query.get_or_404(id)
-    db.session.delete(contacto)
-    db.session.commit()
-    
-    return jsonify({'mensaje': 'Contacto eliminado correctamente'}), 200
