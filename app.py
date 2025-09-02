@@ -418,5 +418,19 @@ def exportar_contactos(usuario_id):
     else:
         return jsonify({"error": "Formato no soportado. Use csv o pdf"}), 400
 
-    
+
+# -------------------
+# Obtener un contacto por id
+# -------------------
+@app.route('/contactos/<int:id>', methods=['GET'])
+def obtener_contacto(id):
+    contacto = Contacto.query.get_or_404(id)
+    return jsonify({
+        'id': contacto.id,
+        'nombre': contacto.name,
+        'apellido': contacto.last_name,
+        'telefono': contacto.telefono, 
+        'email': contacto.email,
+        'agregado en': contacto.creado_en
+    }), 200
     
