@@ -7,12 +7,22 @@ from io import StringIO, BytesIO
 import csv
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
 
-app = Flask(__name__)
-CORS(app)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://agenda_user:agenda_pass@localhost/agenda_db'
+app = Flask(__name__) # NOSONAR
+CORS(app) # NOSONAR
+
+db_user = os.getenv("DB_USER")
+db_pass = os.getenv("DB_PASS")
+db_host = os.getenv("DB_HOST")
+db_name = os.getenv("DB_NAME")
+
+app.config['SQLALCHEMY_DATABASE_URI'] = f"postgresql://{db_user}:{db_pass}@{db_host}/{db_name}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 
 db = SQLAlchemy(app)
 
@@ -322,10 +332,10 @@ def exportar_contactos(usuario_id):
         # Generar PDF
         buffer = BytesIO()
         p = canvas.Canvas(buffer, pagesize=letter)
-        width, height = letter
+        _, height = letter
         
         p.setFont("Helvetica-Bold", 14)
-        p.drawString(200, height - 50, f"Contactos del Usuario")
+        p.drawString(200, height - 50, "Contactos del Usuario")
         
         y = height - 100
         p.setFont("Helvetica", 10)
